@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build
+        run: |
+          xcodebuild \
+            -scheme MinimalVideoConverter \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Package
+        run: |
+          APP_PATH="build/Build/Products/Release/MinimalVideoConverter.app"
+          tar -czf MinimalVideoConverter.tar.gz -C "$(dirname "$APP_PATH")" MinimalVideoConverter.app
+          echo "SHA256=$(shasum -a 256 MinimalVideoConverter.tar.gz | awk '{print $1}')" >> "$GITHUB_ENV"
+
+      - name: Update cask sha256
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          sed -i '' \
+            -e "s/version \".*\"/version \"$VERSION\"/" \
+            -e "s/sha256 .*/sha256 \"$SHA256\"/" \
+            MinimalVideoConverter.rb
+
+      - name: Create release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: MinimalVideoConverter.tar.gz
+          body: |
+            **Install via Homebrew:**
+            ```
+            brew tap dimw/minimal-video-converter
+            brew install --cask minimal-video-converter
+            ```
+
+            **Or download directly** and open `MinimalVideoConverter.app`.
+
+            SHA256: `${{ env.SHA256 }}`
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Commit updated cask
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add MinimalVideoConverter.rb
+          git commit -m "chore: update cask to $GITHUB_REF_NAME"
+          git push origin HEAD:main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
