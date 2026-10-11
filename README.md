@@ -2,6 +2,8 @@
 
 A minimal macOS app for converting and compressing videos using FFmpeg.
 
+![MinimalVideoConverter screenshot](docs/screenshot.png)
+
 ## Features
 
 - **Formats** — export as H.264, H.265, or GIF
