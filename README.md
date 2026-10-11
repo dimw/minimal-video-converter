@@ -15,7 +15,6 @@ Output is saved alongside the source file as `<name> (reduced).<ext>`.
 ## Requirements
 
 - macOS Ventura or later
-- [FFmpeg](https://formulae.brew.sh/formula/ffmpeg) (`brew install ffmpeg`)
 
 ## Install
 
@@ -24,7 +23,9 @@ brew tap dimw/minimal-video-converter
 brew install --cask minimal-video-converter
 ```
 
-Or download the latest `.app` from [Releases](https://github.com/dimw/minimal-video-converter/releases).
+FFmpeg is installed automatically as a dependency.
+
+Or download the latest `.app` from [Releases](https://github.com/dimw/minimal-video-converter/releases) — FFmpeg must be installed separately in that case (`brew install ffmpeg`).
 
 ## Build from source
 

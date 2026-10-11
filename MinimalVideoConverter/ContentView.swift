@@ -46,7 +46,9 @@ struct ContentView: View {
                     .padding()
                 }
                 
-                Text("\(selectedFileURL?.relativePath ?? "")")
+                Text(selectedFileURL?.lastPathComponent ?? "No file selected")
+                    .foregroundStyle(selectedFileURL == nil ? .secondary : .primary)
+                    .padding()
                     .fileImporter(
                         isPresented: $isImporterPresented,
                         allowedContentTypes: [.movie], // Only allow video files
@@ -94,7 +96,7 @@ struct ContentView: View {
 
                 Toggle("Remove audio", isOn: $removeAudio)
                     .toggleStyle(.checkbox)
-                    .padding(.bottom, 4)
+                    .padding(.bottom, 12)
 
                 Button(action: {
                     if (!isExporting) {
@@ -121,10 +123,9 @@ struct ContentView: View {
 
                 }
                 .buttonStyle(CTAButtonStyle(isEnabled: selectedFileURL != nil))
-                .padding()
                 .disabled(selectedFileURL == nil)
                 
-            }
+            }.padding()
             
             
         
@@ -148,7 +149,7 @@ struct ContentView: View {
         }
         .animation(.easeInOut(duration: 0.2), value: isDraggingOver)
         
-        .frame(width: 400, height: 350)
+        .frame(width: 400)
 
     }
     

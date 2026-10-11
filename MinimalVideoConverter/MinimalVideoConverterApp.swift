@@ -1,41 +1,48 @@
 import SwiftUI
 
-@main
-struct MinimalVideoConverterApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    
-    var body: some Scene {
-        WindowGroup {
-            ContentView().onDisappear {
-                NSApplication.shared.terminate(nil)
-            }
-        }
-        
-        .commands {
-//            CommandGroup(replacing: .appInfo) {
-//                // Empty implementation to remove all items
-//            }
-        }
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    @objc func showAbout() {
+        AboutWindowController.shared.show()
     }
 }
 
-class AppDelegate: NSObject, NSApplicationDelegate {
-//    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-//        // Prevent reopening or creating new windows
-//        return false
-//    }
-    
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        // Remove all default menus
+@main
+struct MinimalVideoConverterApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+                .onAppear {
+                    setupMainMenu()
+                    DispatchQueue.main.async { Self.lockWindowSize() }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+                    DispatchQueue.main.async { Self.lockWindowSize() }
+                }
+                .onDisappear { NSApplication.shared.terminate(nil) }
+        }
+        .windowResizability(.contentSize)
+    }
+
+    private static func lockWindowSize() {
+        guard let window = NSApplication.shared.windows.first else { return }
+        window.styleMask.remove(.resizable)
+        let size = window.frame.size
+        window.minSize = size
+        window.maxSize = size
+    }
+
+    private func setupMainMenu() {
         let mainMenu = NSMenu()
 
-        // Application menu
         let appMenuItem = NSMenuItem()
         let appMenu = NSMenu()
         appMenuItem.submenu = appMenu
 
-        // Add "About" and other default app menu items
-        appMenu.addItem(withTitle: "About MinimalVideoConverter", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        let aboutItem = NSMenuItem(title: "About MinimalVideoConverter", action: #selector(AppDelegate.showAbout), keyEquivalent: "")
+        aboutItem.target = appDelegate
+        appMenu.addItem(aboutItem)
         appMenu.addItem(NSMenuItem.separator())
         appMenu.addItem(withTitle: "Quit MinimalVideoConverter", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
