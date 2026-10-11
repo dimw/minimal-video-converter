@@ -138,7 +138,7 @@ struct ContentView: View {
                                     .opacity(0.95)
                             )
                             .padding()
-                            .frame(width: .infinity, height: .infinity)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .overlay(
                                 Text("Drop video here")
                                     .font(.headline)
