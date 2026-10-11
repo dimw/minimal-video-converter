@@ -14,10 +14,10 @@ struct ContentView: View {
     @State private var isImporterPresented = false
     @State private var selectedFileURL: URL?
     @State private var exportStatus: String = "No export yet"
-    @State private var selectedFormat: ExportFormat = .h264
-    @State private var removeAudio: Bool = false
-    @State private var resolution: ResolutionScale = .full
-    @State private var speed: PlaybackSpeed = .x1
+    @AppStorage("selectedFormat") private var selectedFormat: ExportFormat = .h264
+    @AppStorage("removeAudio") private var removeAudio: Bool = false
+    @AppStorage("resolution") private var resolution: ResolutionScale = .full
+    @AppStorage("speed") private var speed: PlaybackSpeed = .x1
     @State var isDraggingOver = false
     @State var isExporting: Bool = false
     @State private var exportProgress: Double = 0.0
