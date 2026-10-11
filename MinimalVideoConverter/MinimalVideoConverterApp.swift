@@ -1,7 +1,14 @@
 import SwiftUI
 
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    @objc func showAbout() {
+        AboutWindowController.shared.show()
+    }
+}
+
 @main
 struct MinimalVideoConverterApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
         WindowGroup {
@@ -33,7 +40,9 @@ struct MinimalVideoConverterApp: App {
         let appMenu = NSMenu()
         appMenuItem.submenu = appMenu
 
-        appMenu.addItem(withTitle: "About MinimalVideoConverter", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        let aboutItem = NSMenuItem(title: "About MinimalVideoConverter", action: #selector(AppDelegate.showAbout), keyEquivalent: "")
+        aboutItem.target = appDelegate
+        appMenu.addItem(aboutItem)
         appMenu.addItem(NSMenuItem.separator())
         appMenu.addItem(withTitle: "Quit MinimalVideoConverter", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
