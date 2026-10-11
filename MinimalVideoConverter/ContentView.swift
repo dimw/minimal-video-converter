@@ -96,7 +96,7 @@ struct ContentView: View {
 
                 Toggle("Remove audio", isOn: $removeAudio)
                     .toggleStyle(.checkbox)
-                    .padding(.bottom, 4)
+                    .padding(.bottom, 12)
 
                 Button(action: {
                     if (!isExporting) {
