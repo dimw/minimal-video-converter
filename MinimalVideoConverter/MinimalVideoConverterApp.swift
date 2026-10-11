@@ -1,6 +1,20 @@
 import SwiftUI
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+    func lockWindowSize() {
+        guard let window = NSApplication.shared.windows.first(where: {
+            $0.styleMask.contains(.titled) && !($0 is NSPanel)
+        }) else { return }
+        if window.delegate !== self { window.delegate = self }
+        window.styleMask.remove(.resizable)
+        window.standardWindowButton(.zoomButton)?.isEnabled = false
+    }
+
+    // Block zoom even if AppKit re-enables the button after restore.
+    func windowShouldZoom(_ window: NSWindow, toFrame newFrame: NSRect) -> Bool {
+        false
+    }
+
     @objc func showAbout() {
         AboutWindowController.shared.show()
     }
@@ -15,22 +29,11 @@ struct MinimalVideoConverterApp: App {
             ContentView()
                 .onAppear {
                     setupMainMenu()
-                    DispatchQueue.main.async { Self.lockWindowSize() }
-                }
-                .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
-                    DispatchQueue.main.async { Self.lockWindowSize() }
+                    DispatchQueue.main.async { appDelegate.lockWindowSize() }
                 }
                 .onDisappear { NSApplication.shared.terminate(nil) }
         }
         .windowResizability(.contentSize)
-    }
-
-    private static func lockWindowSize() {
-        guard let window = NSApplication.shared.windows.first else { return }
-        window.styleMask.remove(.resizable)
-        let size = window.frame.size
-        window.minSize = size
-        window.maxSize = size
     }
 
     private func setupMainMenu() {
