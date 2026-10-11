@@ -6,10 +6,24 @@ struct MinimalVideoConverterApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .onAppear { setupMainMenu() }
+                .onAppear {
+                    setupMainMenu()
+                    DispatchQueue.main.async { Self.lockWindowSize() }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+                    DispatchQueue.main.async { Self.lockWindowSize() }
+                }
                 .onDisappear { NSApplication.shared.terminate(nil) }
         }
         .windowResizability(.contentSize)
+    }
+
+    private static func lockWindowSize() {
+        guard let window = NSApplication.shared.windows.first else { return }
+        window.styleMask.remove(.resizable)
+        let size = window.frame.size
+        window.minSize = size
+        window.maxSize = size
     }
 
     private func setupMainMenu() {

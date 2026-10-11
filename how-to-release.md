@@ -1,98 +1,60 @@
-Packaging your SwiftUI app for installation via **Homebrew** is a great way to distribute it — especially for developers and CLI-savvy users. Let’s walk through how to make it installable and also include **`ffmpeg` as a prerequisite**.
+# How to release
 
----
+Releases are automated via GitHub Actions. Pushing a version tag triggers the pipeline, which builds the app, packages it, creates a GitHub Release, and updates the Homebrew cask.
 
-## ✅ 1. Build your SwiftUI app into a `.app` bundle
+## Steps
 
-Use Xcode or CLI to archive and export the release version of your app.
+1. Make sure all changes are committed and pushed to `main`.
 
-### With CLI:
+2. Tag the release:
+
+   ```bash
+   git tag v1.2.3
+   git push origin v1.2.3
+   ```
+
+   The tag must start with `v` and follow semver (e.g. `v1.2.3`).
+
+3. The [release workflow](.github/workflows/release.yml) will:
+   - Install ffmpeg on the build runner
+   - Build `MinimalVideoConverter.app` in Release configuration (unsigned)
+   - Package it as `MinimalVideoConverter.tar.gz`
+   - Compute the SHA-256 of the archive
+   - Update `version` and `sha256` in [`MinimalVideoConverter.rb`](MinimalVideoConverter.rb)
+   - Create a GitHub Release with the archive attached
+   - Commit the updated cask back to `main`
+
+4. Once the workflow completes, users can install or upgrade via:
+
+   ```bash
+   brew tap dimw/minimal-video-converter
+   brew install --cask minimal-video-converter
+   ```
+
+   Or, if already installed:
+
+   ```bash
+   brew upgrade --cask minimal-video-converter
+   ```
+
+## Cask tap repository
+
+The cask formula lives in this repo (`MinimalVideoConverter.rb`). Homebrew resolves the tap as `dimw/minimal-video-converter` because the GitHub repo is named `minimal-video-converter` (Homebrew strips the `homebrew-` prefix convention — here the repo name itself serves as the tap name).
+
+## Manual release (fallback)
+
+If the workflow fails, you can release manually:
+
 ```bash
-xcodebuild -scheme MinimalVideoConverter -configuration Release -derivedDataPath build
-```
+# Build
+xcodebuild -scheme MinimalVideoConverter -configuration Release -derivedDataPath build \
+  CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
 
-Find the `.app` here:
-```
-build/Build/Products/Release/MinimalVideoConverter.app
-```
-
-Then, package it in a `.tar.gz`:
-```bash
+# Package
 tar -czf MinimalVideoConverter.tar.gz -C build/Build/Products/Release MinimalVideoConverter.app
-```
 
-Upload this somewhere publicly accessible (GitHub Releases is perfect).
-
----
-
-## ✅ 2. Create a Homebrew Tap (formula)
-
-You’ll write a custom Homebrew formula (Ruby file) that:
-
-- Downloads the `.tar.gz`
-- Installs the `.app` into `/Applications`
-- Declares `ffmpeg` as a dependency
-
-### Example formula: `yourapp.rb`
-
-```ruby
-class Yourapp < Formula
-  desc "MinimalVideoConverter – A SwiftUI app that converts videos"
-  homepage "https://github.com/dimw/minimal-video-converter"
-  url "https://github.com/dimw/minimal-video-converter/releases/download/v1.0.0/YourAppName.tar.gz"
-  sha256 "INSERT_SHA256_OF_TAR_FILE"
-  license "MIT"
-
-  depends_on "ffmpeg"
-
-  def install
-    prefix.install Dir["MinimalVideoConverter.app"]
-    # Optional: link to /Applications
-    system "cp", "-r", "#{prefix}/MinimalVideoConverter.app", "/Applications/"
-  end
-
-  def caveats
-    <<~EOS
-      MinimalVideoConverter has been installed to /Applications.
-      Make sure FFmpeg is accessible at /opt/homebrew/bin/ffmpeg.
-    EOS
-  end
-end
-```
-
-To get the `sha256`:
-```bash
+# Get SHA-256
 shasum -a 256 MinimalVideoConverter.tar.gz
 ```
 
----
-
-## ✅ 3. Create your own Tap
-
-On GitHub, make a repo like:
-```
-yourusername/homebrew-yourapp
-```
-
-Put your formula inside: `Formula/yourapp.rb`
-
-Then users can install it like:
-
-```bash
-brew tap yourusername/yourapp
-brew install yourapp
-```
-
-Or even simpler if they haven’t tapped yet:
-
-```bash
-brew install yourusername/yourapp/yourapp
-```
-
----
-
-## ✅ 4. Test locally (before publishing)
-
-```bash
-brew install --build-from-source ./yourapp.rb
-```
+Then update `MinimalVideoConverter.rb` with the new `version` and `sha256`, upload the `.tar.gz` to the GitHub Release, and commit the cask change to `main`.
