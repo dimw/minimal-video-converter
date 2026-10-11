@@ -1,39 +1,25 @@
 import SwiftUI
 import UniformTypeIdentifiers
-import AVFoundation
 import AppKit
 
-let knownFfmpegPaths = [
-    "/opt/homebrew/bin/ffmpeg", // Apple Silicon (brew)
-    "/usr/local/bin/ffmpeg",    // Intel (brew)
-    "/usr/bin/ffmpeg"           // System (rare)
-]
-
 struct ContentView: View {
-    
+
+    @EnvironmentObject var model: ConverterModel
+
     @State private var isImporterPresented = false
-    @State private var selectedFileURL: URL?
-    @State private var exportStatus: String = "No export yet"
-    @AppStorage("selectedFormat") private var selectedFormat: ExportFormat = .h264
-    @AppStorage("removeAudio") private var removeAudio: Bool = false
-    @AppStorage("resolution") private var resolution: ResolutionScale = .full
-    @AppStorage("speed") private var speed: PlaybackSpeed = .x1
     @State var isDraggingOver = false
-    @State var isExporting: Bool = false
-    @State private var exportProgress: Double = 0.0
-    @State private var runningProcess: Process?
-    
+
     var body: some View {
         ZStack {
-            
+
             Color.clear
-                    .contentShape(Rectangle()) // makes the whole area hittable
-                    .onDrop(of: [.fileURL], isTargeted: $isDraggingOver) { providers in
-                        handleDrop(providers: providers)
-                    }
-            
+                .contentShape(Rectangle())
+                .onDrop(of: [.fileURL], isTargeted: $isDraggingOver) { providers in
+                    handleDrop(providers: providers)
+                }
+
             VStack {
-                
+
                 Button(action: {
                     isImporterPresented = true
                 }) {
@@ -46,31 +32,24 @@ struct ContentView: View {
                     }
                     .padding()
                 }
-                
-                Text(selectedFileURL?.lastPathComponent ?? "No file selected")
-                    .foregroundStyle(selectedFileURL == nil ? .secondary : .primary)
+
+                Text(model.selectedFileURL?.lastPathComponent ?? "No file selected")
+                    .foregroundStyle(model.selectedFileURL == nil ? .secondary : .primary)
                     .padding()
                     .fileImporter(
                         isPresented: $isImporterPresented,
-                        allowedContentTypes: [.movie], // Only allow video files
+                        allowedContentTypes: [.movie],
                         allowsMultipleSelection: false
                     ) { result in
                         switch result {
                         case .success(let urls):
-                            if let url = urls.first {
-                                selectedFileURL = url
-                            }
-                            print(
-                                "Selected file: \(selectedFileURL?.absoluteString ?? "None")"
-                            )
+                            model.selectedFileURL = urls.first
                         case .failure(let error):
-                            print(
-                                "Failed to import file: \(error.localizedDescription)"
-                            )
+                            print("Failed to import file: \(error.localizedDescription)")
                         }
                     }
-                
-                Picker("Export Format", selection: $selectedFormat) {
+
+                Picker("Export Format", selection: $model.selectedFormat) {
                     ForEach(ExportFormat.allCases) { format in
                         Text(format.rawValue).tag(format)
                             .padding(.horizontal, 8)
@@ -79,7 +58,7 @@ struct ContentView: View {
                 .pickerStyle(SegmentedPickerStyle())
                 .padding(.bottom, 8)
 
-                Picker("Resolution", selection: $resolution) {
+                Picker("Resolution", selection: $model.resolution) {
                     ForEach(ResolutionScale.allCases) { scale in
                         Text(scale.rawValue).tag(scale)
                     }
@@ -87,7 +66,7 @@ struct ContentView: View {
                 .pickerStyle(SegmentedPickerStyle())
                 .padding(.bottom, 8)
 
-                Picker("Speed", selection: $speed) {
+                Picker("Speed", selection: $model.speed) {
                     ForEach(PlaybackSpeed.allCases) { s in
                         Text(s.rawValue).tag(s)
                     }
@@ -95,24 +74,22 @@ struct ContentView: View {
                 .pickerStyle(SegmentedPickerStyle())
                 .padding(.bottom, 8)
 
-                Toggle("Remove audio", isOn: $removeAudio)
+                Toggle("Remove audio", isOn: $model.removeAudio)
                     .toggleStyle(.checkbox)
-                    .padding(.bottom, 12)
+                    .padding(.bottom, 8)
 
                 Button(action: {
-                    if isExporting {
-                        runningProcess?.terminate()
-                    } else if let url = selectedFileURL {
-                        Task {
-                            await convertVideoWithFFmpeg(for: url, exportFormat: selectedFormat, removeAudio: removeAudio, resolution: resolution, speed: speed)
-                        }
+                    if model.isExporting {
+                        model.stopConversion()
+                    } else if let url = model.selectedFileURL {
+                        Task { await model.convert(inputURL: url) }
                     }
                 }) {
                     ZStack {
                         Text("Convert")
                             .font(.headline)
-                            .opacity(isExporting ? 0 : 1)
-                        if isExporting {
+                            .opacity(model.isExporting ? 0 : 1)
+                        if model.isExporting {
                             HStack {
                                 ProgressView()
                                     .controlSize(.small)
@@ -123,145 +100,43 @@ struct ContentView: View {
                         }
                     }
                 }
-                .buttonStyle(CTAButtonStyle(isEnabled: selectedFileURL != nil))
-                
+                .buttonStyle(CTAButtonStyle(isEnabled: model.selectedFileURL != nil))
+
             }.padding()
-            
-            
-        
+
             if isDraggingOver {
                 RoundedRectangle(cornerRadius: 12)
-                            .strokeBorder(Color.accentColor, lineWidth: 3)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(Color(.windowBackgroundColor))
-                                    .opacity(0.95)
-                            )
-                            .padding()
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .overlay(
-                                Text("Drop video here")
-                                    .font(.headline)
-                            )
-                            .transition(.opacity)
-                            .zIndex(1)
+                    .strokeBorder(Color.accentColor, lineWidth: 3)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color(.windowBackgroundColor))
+                            .opacity(0.95)
+                    )
+                    .padding()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .overlay(
+                        Text("Drop video here")
+                            .font(.headline)
+                    )
+                    .transition(.opacity)
+                    .zIndex(1)
             }
         }
         .animation(.easeInOut(duration: 0.2), value: isDraggingOver)
-        
         .frame(width: 400)
-
     }
-    
-    func convertVideoWithFFmpeg(
-        for inputURL: URL,
-        exportFormat: ExportFormat,
-        removeAudio: Bool = false,
-        resolution: ResolutionScale = .full,
-        speed: PlaybackSpeed = .x1
-    ) async {
-        let outputURL = createOutputURL(for: inputURL, format: exportFormat)
 
-        // Find FFmpeg
-        let ffmpegPath = findFFmpegPath() ?? knownFfmpegPaths.first { FileManager.default.fileExists(atPath: $0) }
-        if (ffmpegPath == nil) {
-            exportStatus = "Not able to find ffmpeg. Install it with brew!"
-            return
-        }
-        
-        let resolveFfmpegPath = ffmpegPath!
-        print("FFmpeg found: \(resolveFfmpegPath)")
+    // MARK: - Drop handling
 
-        
-        if FileManager.default.isExecutableFile(atPath: resolveFfmpegPath) {
-            print("✅ FFmpeg is executable")
-        } else {
-            print("❌ FFmpeg is not executable or not found")
-        }
-        
-        // Prepare process
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: resolveFfmpegPath)
-
-        // Convert FFmpeg arguments
-        process.arguments = ffmpegArguments(for: inputURL, outputURL: outputURL, format: exportFormat, removeAudio: removeAudio, resolution: resolution, speed: speed)
-
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-
-        pipe.fileHandleForReading.readabilityHandler = { handle in
-            if let line = String(data: handle.availableData, encoding: .utf8) {
-                
-                parseProgress(line: line, progressHandler: { progress in
-                    DispatchQueue.main.async {
-                        exportProgress = progress
-                        print("Progress: \(progress)")
-                    }})
-                }
-        }
-        
-        do {
-            isExporting = true
-            runningProcess = process
-            defer {
-                isExporting = false
-                runningProcess = nil
-            }
-
-            try process.run()
-
-            // Wait on a background thread so the main thread (and UI) stays responsive.
-            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                process.terminationHandler = { _ in
-                    pipe.fileHandleForReading.readabilityHandler = nil
-                    continuation.resume()
-                }
-            }
-
-            if process.terminationStatus == 0 {
-                print("✅ Conversion succeeded: \(outputURL.path)")
-#if os(macOS)
-                NSWorkspace.shared.activateFileViewerSelecting([outputURL])
-#endif
-            } else {
-                print("❌ FFmpeg failed with code: \(process.terminationStatus)")
-            }
-        } catch {
-            print("🚨 Failed to run ffmpeg: \(error.localizedDescription)")
-        }
-    }
-    
-    func parseProgress(line: String, progressHandler: (Double) -> Void) {
-        let lines = line.split(separator: "\n")
-        for line in lines {
-            if line.starts(with: "frame=") || line.starts(with: "time=") {
-                if let timeString = line.split(separator: "=").last {
-                    let timeComponents = timeString.split(separator: ":").compactMap { Double($0) }
-                    if timeComponents.count == 3 {
-                        let seconds = timeComponents[0] * 3600 + timeComponents[1] * 60 + timeComponents[2]
-                        progressHandler(seconds)
-                        print("Progress: \(seconds)")
-                    }
-                }
-            }
-        }
-    }
-    
     func handleDrop(providers: [NSItemProvider]) -> Bool {
         for provider in providers {
             if provider.hasItemConformingToTypeIdentifier("public.file-url") {
                 provider.loadItem(forTypeIdentifier: "public.file-url", options: nil) { item, _ in
                     DispatchQueue.main.async {
                         if let data = item as? Data,
-                           let url = URL(dataRepresentation: data, relativeTo: nil) {
-                            // Optionally check for video types
-                            if url.pathExtension.lowercased().matchesAny(of: ["mp4", "mov", "m4v"]) {
-                                // self.droppedFileURL = url
-                                selectedFileURL = url
-                                print("✅ Dropped video: \(url)")
-                                // Trigger your processing logic here
-                            }
+                           let url = URL(dataRepresentation: data, relativeTo: nil),
+                           url.pathExtension.lowercased().matchesAny(of: ["mp4", "mov", "m4v"]) {
+                            self.model.selectedFileURL = url
                         }
                     }
                 }
@@ -270,7 +145,6 @@ struct ContentView: View {
         }
         return false
     }
-    
 }
 
 extension String {
@@ -279,18 +153,16 @@ extension String {
     }
 }
 
+
 #Preview {
     ContentView()
+        .environmentObject(ConverterModel())
 }
 
 #Preview {
-    ContentView(isExporting: true)
+    ContentView()
+        .environmentObject(ConverterModel())
         .preferredColorScheme(.light)
         .frame(width: 400, height: 300)
         .padding()
 }
-
-#Preview {
-    ContentView(isDraggingOver: true)
-}
-

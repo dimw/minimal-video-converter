@@ -1,6 +1,10 @@
 import SwiftUI
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+
+    var statusBarController: StatusBarController?
+
     func lockWindowSize() {
         guard let window = NSApplication.shared.windows.first(where: {
             $0.styleMask.contains(.titled) && !($0 is NSPanel)
@@ -10,7 +14,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.standardWindowButton(.zoomButton)?.isEnabled = false
     }
 
-    // Block zoom even if AppKit re-enables the button after restore.
     func windowShouldZoom(_ window: NSWindow, toFrame newFrame: NSRect) -> Bool {
         false
     }
@@ -24,14 +27,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 struct MinimalVideoConverterApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
+    private let model = ConverterModel()
+    private let statusBarController: StatusBarController
+
+    init() {
+        let m = model
+        statusBarController = StatusBarController(model: m)
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(model)
                 .onAppear {
+                    appDelegate.statusBarController = statusBarController
                     setupMainMenu()
                     DispatchQueue.main.async { appDelegate.lockWindowSize() }
                 }
-                .onDisappear { NSApplication.shared.terminate(nil) }
         }
         .windowResizability(.contentSize)
     }
