@@ -21,6 +21,7 @@ struct ContentView: View {
     @State var isDraggingOver = false
     @State var isExporting: Bool = false
     @State private var exportProgress: Double = 0.0
+    @State private var runningProcess: Process?
     
     var body: some View {
         ZStack {
@@ -99,10 +100,12 @@ struct ContentView: View {
                     .padding(.bottom, 12)
 
                 Button(action: {
-                    if (!isExporting) {
-                        convertVideoWithFFmpeg(for: selectedFileURL!, exportFormat: selectedFormat, removeAudio: removeAudio, resolution: resolution, speed: speed)
-                    } else {
-                        print("Already exporting...")
+                    if isExporting {
+                        runningProcess?.terminate()
+                    } else if let url = selectedFileURL {
+                        Task {
+                            await convertVideoWithFFmpeg(for: url, exportFormat: selectedFormat, removeAudio: removeAudio, resolution: resolution, speed: speed)
+                        }
                     }
                 }) {
                     ZStack {
@@ -114,16 +117,13 @@ struct ContentView: View {
                                 ProgressView()
                                     .controlSize(.small)
                                     .padding(.trailing, 4)
-                                
-//                                Text("\(ceil(exportProgress))%")
+                                Text("Stop")
+                                    .font(.headline)
                             }
                         }
-                        
                     }
-
                 }
                 .buttonStyle(CTAButtonStyle(isEnabled: selectedFileURL != nil))
-                .disabled(selectedFileURL == nil)
                 
             }.padding()
             
@@ -159,7 +159,7 @@ struct ContentView: View {
         removeAudio: Bool = false,
         resolution: ResolutionScale = .full,
         speed: PlaybackSpeed = .x1
-    ) {
+    ) async {
         let outputURL = createOutputURL(for: inputURL, format: exportFormat)
 
         // Find FFmpeg
@@ -201,22 +201,24 @@ struct ContentView: View {
                 }
         }
         
-        process.terminationHandler = { _ in
-            pipe.fileHandleForReading.readabilityHandler = nil
-//            DispatchQueue.main.async {
-//                exportProgress = 100
-//                print("Progress: \(progress)")
-//            }})
-        }
-        
         do {
             isExporting = true
-            defer { isExporting = false }
-            
+            runningProcess = process
+            defer {
+                isExporting = false
+                runningProcess = nil
+            }
+
             try process.run()
-            process.waitUntilExit()
-            pipe.fileHandleForReading.readabilityHandler = nil
-            
+
+            // Wait on a background thread so the main thread (and UI) stays responsive.
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                process.terminationHandler = { _ in
+                    pipe.fileHandleForReading.readabilityHandler = nil
+                    continuation.resume()
+                }
+            }
+
             if process.terminationStatus == 0 {
                 print("✅ Conversion succeeded: \(outputURL.path)")
 #if os(macOS)
