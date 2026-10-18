@@ -68,12 +68,12 @@ enum ResolutionScale: String, CaseIterable, Identifiable {
         }
     }
 
-    var gifFactor: String? {
+    var gifScaleFilter: String? {
         switch self {
         case .full: return nil
-        case .threeQuarters: return "0.75"
-        case .half: return "0.5"
-        case .quarter: return "0.25"
+        case .threeQuarters: return "scale=trunc(iw*3/8)*2:trunc(ih*3/8)*2"
+        case .half: return "scale=trunc(iw/4)*2:trunc(ih/4)*2"
+        case .quarter: return "scale=trunc(iw/8)*2:trunc(ih/8)*2"
         }
     }
 }
@@ -106,12 +106,39 @@ func ffmpegArguments(for inputURL: URL, outputURL: URL, format: ExportFormat, re
             + audioArgs
             + [outputURL.path]
     case .gif:
-        let baseFilter = "fps=10,scale=320:-1:flags=lanczos"
-        let scalePrefix = resolution.gifFactor.map { "scale=iw*\($0):ih*\($0)," } ?? ""
-        let speedPrefix = speed.videoFilter.map { "\($0)," } ?? ""
-        let vf = speedPrefix + scalePrefix + baseFilter
-        return ["-y", "-i", inputURL.path, "-vf", vf] + audioArgs + [outputURL.path]
+        // Handled separately via gifArguments(for:outputURL:resolution:speed:)
+        return []
     }
+}
+
+// Returns (palettegenArgs, paletteuseArgs, paletteURL) for two-pass high-quality GIF export.
+func gifArguments(for inputURL: URL, outputURL: URL, resolution: ResolutionScale, speed: PlaybackSpeed) -> ([String], [String], URL) {
+    let paletteURL = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString)
+        .appendingPathExtension("png")
+
+    let speedPrefix = speed.videoFilter.map { "\($0)," } ?? ""
+    let scaleFilter = resolution.gifScaleFilter.map { "\($0)," } ?? ""
+    // fps=15 gives smoother playback; lanczos is highest-quality downscale filter
+    let baseFilters = speedPrefix + scaleFilter + "fps=15,scale=flags=lanczos"
+
+    let palettegenArgs = [
+        "-y", "-i", inputURL.path,
+        "-vf", "\(baseFilters),palettegen=stats_mode=full",
+        paletteURL.path
+    ]
+
+    let paletteuseArgs = [
+        "-y",
+        "-i", inputURL.path,
+        "-i", paletteURL.path,
+        "-an",
+        "-lavfi", "\(baseFilters) [x]; [x][1:v] paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle",
+        "-progress", "-", "-nostats",
+        outputURL.path
+    ]
+
+    return (palettegenArgs, paletteuseArgs, paletteURL)
 }
 
 func createOutputURL(for inputURL: URL, format: ExportFormat) -> URL {
