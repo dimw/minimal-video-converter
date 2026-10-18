@@ -62,9 +62,9 @@ enum ResolutionScale: String, CaseIterable, Identifiable {
     var scaleFilter: String? {
         switch self {
         case .full: return nil
-        case .threeQuarters: return "scale=iw*3/4:ih*3/4"
-        case .half: return "scale=iw/2:ih/2"
-        case .quarter: return "scale=iw/4:ih/4"
+        case .threeQuarters: return "scale=trunc(iw*3/8)*2:trunc(ih*3/8)*2"
+        case .half: return "scale=trunc(iw/4)*2:trunc(ih/4)*2"
+        case .quarter: return "scale=trunc(iw/8)*2:trunc(ih/8)*2"
         }
     }
 
