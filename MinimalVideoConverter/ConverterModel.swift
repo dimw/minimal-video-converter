@@ -91,51 +91,69 @@ final class ConverterModel: ObservableObject {
             return
         }
 
+        isExporting = true
+        defer { isExporting = false }
+
+        if selectedFormat == .gif {
+            let (pass1Args, pass2Args, paletteURL) = gifArguments(
+                for: inputURL, outputURL: outputURL,
+                resolution: resolution, speed: speed
+            )
+            defer { try? FileManager.default.removeItem(at: paletteURL) }
+
+            guard await runFFmpeg(path: resolvedPath, args: pass1Args, trackProgress: false) else { return }
+            guard await runFFmpeg(path: resolvedPath, args: pass2Args, trackProgress: true) else { return }
+        } else {
+            let args = ffmpegArguments(
+                for: inputURL, outputURL: outputURL,
+                format: selectedFormat, removeAudio: removeAudio,
+                resolution: resolution, speed: speed
+            )
+            guard await runFFmpeg(path: resolvedPath, args: args, trackProgress: true) else { return }
+        }
+
+        NSWorkspace.shared.activateFileViewerSelecting([outputURL])
+    }
+
+    private func runFFmpeg(path: String, args: [String], trackProgress: Bool) async -> Bool {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: resolvedPath)
-        process.arguments = ffmpegArguments(
-            for: inputURL, outputURL: outputURL,
-            format: selectedFormat, removeAudio: removeAudio,
-            resolution: resolution, speed: speed
-        )
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = args
 
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
 
-        pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            guard let self else { return }
-            if let line = String(data: handle.availableData, encoding: .utf8) {
-                parseFFmpegProgress(line: line) { progress in
-                    DispatchQueue.main.async { self.exportProgress = progress }
+        if trackProgress {
+            pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+                guard let self else { return }
+                if let line = String(data: handle.availableData, encoding: .utf8) {
+                    parseFFmpegProgress(line: line) { progress in
+                        DispatchQueue.main.async { self.exportProgress = progress }
+                    }
                 }
             }
         }
 
+        runningProcess = process
+        defer { runningProcess = nil }
+
         do {
-            isExporting = true
-            runningProcess = process
-            defer {
-                isExporting = false
-                runningProcess = nil
-            }
-
             try process.run()
-
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 process.terminationHandler = { _ in
                     pipe.fileHandleForReading.readabilityHandler = nil
                     continuation.resume()
                 }
             }
-
-            if process.terminationStatus == 0 {
-                NSWorkspace.shared.activateFileViewerSelecting([outputURL])
-            } else {
+            if process.terminationStatus != 0 {
                 print("FFmpeg failed with code: \(process.terminationStatus)")
+                return false
             }
+            return true
         } catch {
             print("Failed to run ffmpeg: \(error.localizedDescription)")
+            return false
         }
     }
 
